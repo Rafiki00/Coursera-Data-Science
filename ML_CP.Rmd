@@ -1,0 +1,97 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Rafael Llopis Garijo"
+date: "8/6/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Summary
+
+The data used for this project has been measured by wearable computing devices. The data of this study can be used to determine how well the participants are lifting weights based on the information that these devices recorded at the time of exercise. There are 5 possible classes that the activity can fall into: A-D. A represents doing the weights exactly as instructed and B-D are wrong ways to do it, each representing a different flaw.
+The objective of this project is thus to create a model that can predict the class based on the multivariate data that the dataset provides.
+A few methods for contructing the algorithm were used (lda, random forests, decission trees...) as well as cross validation to refine it.
+Finally, random forests was selected due to its high accuracy. 
+
+
+## Cleaning the Data
+
+The data needed processing. Due to the nature of it, there are many missing values, many correlated variables and variables that would not be useful for the question we are trying to answer which is: how can we predict class based on the information we have.
+Furthermore, the orginal data is very big (19k rows, 160 variables) thus it is a good idea to further split this data set into train and test for a more accurate out of sample error and also to ease a bit of processing power (smaller dataset = faster training).
+
+To start off, the caret package for machine learnign is loaded and the seed set to ensure replicability.
+Firstly, we drop the first 8 columns, which provide information we do not need a priori like name of the person or date of the activity. We are trying to predict the class based on the measurements of the physical movements, everything else although it might help to include in a model is not what we are after.
+Secondly, columns with NA's are dropped. Columns with NA's in this dataset have a LOT of NA's. There are also variables that compute things like standard deviation or curtosis that usually have a handful of NA's and are redundant, therefore, variables containing any number of NA's are removed.
+Thirdly, there are variables that offer no explanative power due to their near zero variance. These variables are also removed.
+Lastly, the dataset is split in half into a train and a test set.
+
+```{r process}
+library(caret)
+set.seed(625)
+full <- read.csv("pml-training.csv")
+full <- full[,8:160]
+full <- full[,colSums(is.na(full)) == 0]
+full <- full[,-nearZeroVar(full)]
+inTrain <- createDataPartition(full$classe, p=0.5)[[1]]
+train <- full[inTrain,]
+test <- full[-inTrain,]
+```
+
+The final datasets are:
+train: 9812 rows x 53 columns
+test: 9810 x 53
+
+As we can see, the number of variables has decresed dramatically, but it still holds a lot of potential explanatory power.
+
+
+## Model Selection
+
+Three different models were tried with varying success.
+The starting point was linear discriminant analysis, a simple, fast to train algorithm. 
+To get an idea of how well the algorithm would work in new data, the model was fit to the test data that was created when the partition was done during the cleaning phase of the project.
+
+```{r lda}
+fit1 <- train(classe~., method="lda", data=train)
+pred1 <- predict(fit1, test)
+confusionMatrix(pred1, test$classe)$overall
+```
+
+As we can see, the acuuracy for this model is around 0.7. Not ba but there surely must be better alternatives. The second model, still keeping things simple was a decision tree. Creating one decision tree would be fast to train and can solve the problem.
+
+```{r dt}
+fit2 <- train(classe~., method="rpart", data=train)
+pred2 <- predict(fit2, test)
+confusionMatrix(pred2, test$classe)$overall
+```
+
+Accuracy with this model is lower than with lda: 0.5. A single decision tree is not able to get us a better prediction of classes.
+Next down the line is to model a random forest. The first attempt at training a random forest model for this problem proved unsuccesful because of the processing power that it required (it took too long to train). Because of this, cross validation was performed. On the one hand, it meant that the algorithm was trained with fewer data, making it possible for the algorithm to train at all. On the other hand, cross validation improves the quality of the response because it means that there is a refinement process.
+
+```{r rf}
+ctrl <- trainControl(method="cv", number=3, verboseIter=F)
+fit3 <- train(classe~., method="rf", data=train, trControl=ctrl)
+pred3 <- predict(fit3, test)
+confusionMatrix(pred3, test$classe)$overall
+```
+
+From this information it becomes clear that random forest outperforms the other models. It predicted the classes with high accuracy (0.99) and it is the chosen algorithm to be applied to the unseen test set of 20 observations.
+The same processing is done to the testing data set (note that it is called **testing** as opposed to "test" which was part of the training set).
+This testing set was provided alongside the train data and the classe is unknown.
+
+```{r testing}
+testing <- read.csv("pml-testing.csv")
+testing <- testing[,which(names(testing) %in% names(train))]
+testing$classe <- predict(fit3, testing)
+```
+
+
+## Conclusion
+
+The expected out-of-sample error is going to be approximately 0.01. Random forest performed very well on an unseen test set of many observations (9000+) so hopefully it will do as well in the 'testing' data set.
+Regarding the choices made in this analysis, there could have been more space for models to be extended. Linear discriminant analysis could have better performance if the data were pre processed (cross validation and pca). However, when pca was tried it did not offer a significant improvement.
+Bagging could have been used between the three proposed models to offer a collaborative answer.
+More variables could have been used to increase prediction power.
+Although all this could have definitely helped, the resulting accuracy of the random forest model provides little incentive to pick a better model.
