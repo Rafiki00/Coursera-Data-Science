@@ -1,1 +1,2 @@
-* linguist-language = .r
+* linguist-vendored
+*.R linguist-vendored = false
